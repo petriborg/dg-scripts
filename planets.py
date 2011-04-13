@@ -31,19 +31,25 @@ connection = None
 todays_day_id = None
 
 try:
-    (opts,args) = getopt.getopt(sys.argv, '', 
+    (opts,args) = getopt.getopt(sys.argv[1:], 's:d:', 
         ['sessionid=', 'database='])
+    print 'opts:',opts
+    print 'args:',args
     for (opt,val) in opts:
-        if opt in ('--sessionid',):
+        print "opt:",opt,"val:",val
+        if opt in ('-s', '--sessionid'):
             sessionid = val
-        elif opt in ('--database='):
+        elif opt in ('-d', '--database'):
             database = val
         else:
             print "Unknown option:",opt
-            sys.exit(1)
+            sys.exit(2)
 except getopt.GetoptError, e:
     print e
-    sys.exit(1)
+    sys.exit(2)
+
+print "database:",database
+print "sessionid:",sessionid
 
 @contextmanager
 def transaction():
@@ -74,17 +80,6 @@ def curl(*args):
 def cat(*args):
     return ['cat', '../data/test_planets_list_all_1']
 
-def curl_raw_page(url):
-    print "Fetching from web", url
-    proc = sub.Popen(curl(url), stdout=sub.PIPE)
-    raw_page = proc.stdout.read()
-
-    with transaction() as c:
-        c.execute("insert into raw_pages (url, page) values (?, ?)", 
-            (url, raw_page,))
-
-    return raw_page
-
 def find_todays_id():
     global todays_day_id
     if todays_day_id is None:
@@ -102,6 +97,18 @@ def find_todays_id():
                 query = c.execute("insert into days (day_id) select null")
                 todays_day_id = query.lastrowid()
     return todays_day_id
+
+def curl_raw_page(url):
+    print "Fetching from web", url
+    proc = sub.Popen(curl(url), stdout=sub.PIPE)
+    raw_page = proc.stdout.read()
+
+    with transaction() as c:
+        c.execute("""insert into raw_pages 
+            (day_id, url, page) values (?, ?, ?)""", 
+            (todays_day_id, url, raw_page,))
+
+    return raw_page
 
 def get_raw_page(url):
     with transaction() as c:
@@ -231,7 +238,7 @@ page_count = get_page_count(xml_obj)
 print "found %d pages" % page_count
 
 if page_count > 1:
-    for i in range(1, page_count):
+    for i in range(1, page_count+1):
         index = i+1
         url = list_all_url % i
         xml_obj = get_xml(url)
@@ -241,12 +248,21 @@ with transaction() as c:
     query = c.execute("""select planet_id from planets""")
     planet_ids = query.fetchall()
 
-#print "planet ids",planet_ids
-#planet_ids = planet_ids[0],
+print "planet ids:",len(planet_ids)
 
+planet_index = 0
 planet_info_url = 'http://davesgalaxy.com/planets/%s/info/'
 for planet_id_tuple in planet_ids:
+    planet_index += 1
     planet_id = planet_id_tuple[0]
+    with transaction() as c:
+        query = c.execute("""select info_id from planet_info
+            where planet_id=? and day_id=?""", (planet_id, todays_day_id))
+        data = query.fetchall()
+        if len(data) > 0:
+            print "Row %d already fetched planet_id %d for today!" % (
+                planet_index, planet_id)
+            continue
     xml_obj = get_xml(planet_info_url % planet_id)
     table_elems = xml_obj.xpath('//table')
     insert_planet_info(planet_id, table_elems)

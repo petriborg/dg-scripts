@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS planet_info (
     day_id INTEGER,
 
     income_tax_rate REAL,
+    tariff_rate REAL,
     open_ship_yard BOOLEAN,
+    open_trading BOOLEAN,
     trades_rare_commodities BOOLEAN,
     population INTEGER,
     treasury INTEGER,
@@ -65,7 +67,9 @@ CREATE TABLE IF NOT EXISTS planet_info (
 
     krellmetal_on_hand INTEGER,
     krellmetal_next_production INTEGER,
-    krellmetal_price INTEGER
+    krellmetal_price INTEGER,
+
+    UNIQUE (planet_id, day_id) ON CONFLICT IGNORE
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS planet_info_id on planet_info(info_id);
