@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS days (
     creation_time INTEGER DEFAULT (datetime('now'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS days_id on days(day_id);
+CREATE UNIQUE INDEX IF NOT EXISTS days_id ON days(day_id);
 
 
 
@@ -72,14 +72,79 @@ CREATE TABLE IF NOT EXISTS planet_info (
     UNIQUE (planet_id, day_id) ON CONFLICT IGNORE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS planet_info_id on planet_info(info_id);
+CREATE UNIQUE INDEX IF NOT EXISTS planet_info_id ON planet_info(info_id);
 
-CREATE VIEW IF NOT EXISTS open_planets AS
+
+
+CREATE TABLE IF NOT EXISTS planet_budget (
+    budget_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    planet_id INTEGER,
+    day_id INTEGER,
+
+    income_tax INTEGER,
+
+    trade_incentives INTEGER,
+    fleet_upkeep INTEGER,
+    matter_synth_1 INTEGER,
+    matter_synth_2 INTEGER,
+    long_range_sensors_1 INTEGER,
+    long_range_sensors_2 INTEGER,
+    military_base INTEGER,
+    slingshot INTEGER,
+    regional_government INTEGER,
+    mind_control INTEGER,
+
+    total_credits INTEGER,
+    total_debits INTEGER,
+    budget_surplus INTEGER
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS planet_budget_id ON planet_budget(budget_id);
+
+
+
+DROP VIEW IF EXISTS current_day;
+CREATE VIEW current_day AS
+SELECT d.day_id, d.creation_time
+  FROM days d
+ ORDER BY d.creation_time DESC LIMIT 1
+;
+
+DROP VIEW IF EXISTS open_trading_planets;
+CREATE VIEW open_trading_planets AS
 SELECT p.name, p.planet_id
   FROM planets p JOIN planet_info i
     ON p.planet_id=i.planet_id
  WHERE open_trading='yes'
-   AND day_id = (SELECT max(day_id) FROM days);
+   AND day_id = (SELECT day_id FROM current_day);
+;
+
+DROP VIEW IF EXISTS current_resources;
+CREATE VIEW current_resources AS
+SELECT p.name, p.planet_id, 
+       steel_on_hand as steel,
+       unobtanium_on_hand as unobtanium,
+       food_on_hand as food,
+       antimatter_on_hand as antimatter,
+       krellmetal_on_hand as krellmetal,
+       population as people,
+       treasury as quatloos
+  FROM planets p JOIN planet_info i
+    ON p.planet_id=i.planet_id
+ WHERE day_id = (SELECT day_id FROM current_day)
+;
+
+DROP VIEW IF EXISTS arc_builders;
+CREATE VIEW arc_builders AS
+SELECT p.name, p.planet_id, b.fleet_upkeep, b.budget_surplus
+  FROM planets p, current_resources r, planet_budget b
+ WHERE p.planet_id=b.planet_id AND p.planet_id=r.planet_id
+   AND day_id = (SELECT day_id FROM current_day)
+   AND r.steel > 200
+   AND r.food > 1000
+   AND r.people > 200
+   AND r.antimatter > 10
+   AND r.quatloos > 200
 ;
 
 
