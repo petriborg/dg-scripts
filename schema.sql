@@ -74,4 +74,12 @@ CREATE TABLE IF NOT EXISTS planet_info (
 
 CREATE UNIQUE INDEX IF NOT EXISTS planet_info_id on planet_info(info_id);
 
+CREATE VIEW IF NOT EXISTS open_planets AS
+SELECT p.name, p.planet_id
+  FROM planets p JOIN planet_info i
+    ON p.planet_id=i.planet_id
+ WHERE open_trading='yes'
+   AND day_id = (SELECT max(day_id) FROM days);
+;
+
 

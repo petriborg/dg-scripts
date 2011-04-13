@@ -17,7 +17,9 @@ import os, sys, re, json, getopt
 #
 # planet info
 # http://davesgalaxy.com/planets/441551/info/
-# http://davesgalaxy.com/planets/262158/info/?_=1302537318397
+# http://davesgalaxy.com/planets/262155/manage/
+# http://davesgalaxy.com/planets/262155/budget/
+# http://davesgalaxy.com/planets/262155/upgradelist/
 #
 # data looks like
 # <tr class="\"fleetrow\"" ...>
@@ -29,27 +31,13 @@ sessionid = None
 database = None
 connection = None
 todays_day_id = None
+timeout = '-22 hours'
 
-try:
-    (opts,args) = getopt.getopt(sys.argv[1:], 's:d:', 
-        ['sessionid=', 'database='])
-    print 'opts:',opts
-    print 'args:',args
-    for (opt,val) in opts:
-        print "opt:",opt,"val:",val
-        if opt in ('-s', '--sessionid'):
-            sessionid = val
-        elif opt in ('-d', '--database'):
-            database = val
-        else:
-            print "Unknown option:",opt
-            sys.exit(2)
-except getopt.GetoptError, e:
-    print e
-    sys.exit(2)
+planet_info_url = 'http://davesgalaxy.com/planets/%s/info/'
+planet_manage_url = 'http://davesgalaxy.com/planets/%s/manage/'
+planet_budget_url = 'http://davesgalaxy.com/planets/%s/budget/'
+planet_upgrade_url = 'http://davesgalaxy.com/planets/%s/upgradelist/'
 
-print "database:",database
-print "sessionid:",sessionid
 
 @contextmanager
 def transaction():
@@ -86,8 +74,8 @@ def find_todays_id():
         with transaction() as c:
             query = c.execute("""
                 select day_id from days
-                where creation_time > datetime('now', '-22 hours')
-                order by creation_time desc limit 1""");
+                where creation_time > datetime('now', ?)
+                order by creation_time desc limit 1""", (timeout,));
             data = query.fetchall()
             if len(data) > 0:
                 day_id = data[0][0]
@@ -128,15 +116,19 @@ def get_raw_page(url):
 
 def dump_page(page, url=None, e=None):
     # writes page to disk
-    fd = open('z_page_error', 'w')
-    fd.write(url)
-    fd.write("\n\n")
-    fd.write(e)
-    fd.write("\n\n")
+    fn = url[23:].replace('/','_')
+    print "Dump", fn
+    fd = open(fn, 'w')
+    if url is not None:
+        fd.write(url)
+        fd.write("\n\n")
+    if e is not None:
+        fd.write(e)
+        fd.write("\n\n")
     fd.write(page)
     fd.close()
 
-def get_xml(url):
+def get_xml(url, save_xml=False):
     raw_page = get_raw_page(url)
     json_decoder = json.JSONDecoder()
     json_obj = json_decoder.decode(raw_page)
@@ -148,23 +140,16 @@ def get_xml(url):
         print e
         dump_page(xml_page, url, e)
         raise
+    if save_xml:
+        dump_page(xml_page, url)
     return xml_obj
-
-def get_planet_number(tr_elem):
-    js_text = tr_elem.get('onmouseover')
-    planet_number = js_text.split("'")[1]
-    return planet_number
-
-def get_planet_name(tr_elem):
-    planet_name = tr_elem.xpath('td[5]')[0].text
-    return planet_name
 
 def get_page_count(root_elem):
     paginator = root_elem.xpath('//div[@class="paginator"]')[0]
     count = len(paginator.getchildren())
     return count
 
-def clean_key(key_str):
+def clean(key_str):
     key_str = key_str.strip().replace(' ', '_')
     m = re.search('[^:\s]+', key_str)
     if m:
@@ -172,6 +157,16 @@ def clean_key(key_str):
     return key_str.lower()
 
 def insert_planets(planets_elem):
+
+    def get_planet_number(tr_elem):
+        js_text = tr_elem.get('onmouseover')
+        planet_number = js_text.split("'")[1]
+        return planet_number
+
+    def get_planet_name(tr_elem):
+        planet_name = tr_elem.xpath('td[5]')[0].text
+        return planet_name
+
     for planet in planets_elem:
         planet_number = get_planet_number(planet)
         planet_name = get_planet_name(planet)
@@ -189,12 +184,13 @@ def insert_planet_info(planet_id, planet_info_elems):
     # the first table
     tr_elems = planet_info_elems[0].xpath('tr')
     for tr_elem in tr_elems:
-        k = clean_key(tr_elem.getchildren()[0].text)
+        k = clean(tr_elem.getchildren()[0].text)
         v = tr_elem.getchildren()[1].text
         if k in ('name', 'owner'):
             continue
         if k == 'treasury':
             v = v.split()[0]
+        v = clean(v)
         print "%s: %s" % (k,v)
         result[k] = v
 
@@ -202,10 +198,10 @@ def insert_planet_info(planet_id, planet_info_elems):
     tr_elems = planet_info_elems[1].xpath('tr[td]')
     for tr_elem in tr_elems:
         td_elems = tr_elem.getchildren()
-        k = clean_key(td_elems[0].text)
-        v_now = clean_key(td_elems[1].text)
-        v_next = clean_key(td_elems[2].text)
-        v_price = clean_key(td_elems[3].text)
+        k = clean(td_elems[0].text)
+        v_now = clean(td_elems[1].text)
+        v_next = clean(td_elems[2].text)
+        v_price = clean(td_elems[3].text)
         print "%s: %s, %s, %s" % (k, v_now, v_next, v_price)
         result[k+"_on_hand"] = v_now
         result[k+"_next_production"] = v_next
@@ -225,51 +221,100 @@ def insert_planet_info(planet_id, planet_info_elems):
         #print query_str
         c.execute(query_str, sorted_values)
 
-find_todays_id()
-
-print "today's id:", todays_day_id
-
-list_all_url = 'http://davesgalaxy.com/planets/list/all/%s/'
-xml_obj = get_xml(list_all_url % 1)
-insert_planets(xml_obj.xpath('/div//tr[@class="fleetrow"]'))
-
-page_count = get_page_count(xml_obj)
-
-print "found %d pages" % page_count
-
-if page_count > 1:
-    for i in range(1, page_count+1):
-        index = i+1
-        url = list_all_url % i
-        xml_obj = get_xml(url)
-        insert_planets(xml_obj.xpath('/div//tr[@class="fleetrow"]'))
-
-with transaction() as c:
-    query = c.execute("""select planet_id from planets""")
-    planet_ids = query.fetchall()
-
-print "planet ids:",len(planet_ids)
-
-planet_index = 0
-planet_info_url = 'http://davesgalaxy.com/planets/%s/info/'
-for planet_id_tuple in planet_ids:
-    planet_index += 1
-    planet_id = planet_id_tuple[0]
+def planet_info(planet_id):
     with transaction() as c:
         query = c.execute("""select info_id from planet_info
             where planet_id=? and day_id=?""", (planet_id, todays_day_id))
         data = query.fetchall()
         if len(data) > 0:
-            print "Row %d already fetched planet_id %d for today!" % (
-                planet_index, planet_id)
-            continue
-    xml_obj = get_xml(planet_info_url % planet_id)
-    table_elems = xml_obj.xpath('//table')
-    insert_planet_info(planet_id, table_elems)
+            print "Already fetched planet_id %d for today!" % (
+                planet_id,)
+            return
+    
+    info_xml_obj = get_xml(planet_info_url % planet_id)
+    info_table_elems = info_xml_obj.xpath('//table')
+    insert_planet_info(planet_id, info_table_elems)
+
+def planet_manage(planet_id):
+    manage_xml_obj = get_xml(planet_manage_url % planet_id, True)
+
+def planet_budget(planet_id):
+    budget_xml_obj = get_xml(planet_budget_url % planet_id, True)
+
+    tb_elems = budget_xml_obj.xpath('//table//table')
+    fleet_tr = tb_elems[0].xpath('tr[td/text()=="Fleet Upkeep"]')
+    fleet_upkeep = fleet_tr[0].getchildren()[1].text
+    print "fleet upkeep", fleet_upkeep
+
+def planet_upgrade(planet_id):
+    upgrade_xml_obj = get_xml(planet_upgrade_url % planet_id, True)
+
+
+
+def main():
+    global sessionid, database
+    try:
+        (opts,args) = getopt.getopt(sys.argv[1:], 's:d:', 
+            ['sessionid=', 'database='])
+        print 'opts:',opts
+        print 'args:',args
+        for (opt,val) in opts:
+            print "opt:",opt,"val:",val
+            if opt in ('-s', '--sessionid'):
+                sessionid = val
+            elif opt in ('-d', '--database'):
+                database = val
+            else:
+                print "Unknown option:",opt
+                sys.exit(2)
+    except getopt.GetoptError, e:
+        print e
+        sys.exit(2)
+    
+    print "database:",database
+    print "sessionid:",sessionid
+    
+    find_todays_id()
+    
+    print "today's id:", todays_day_id
+    
+    list_all_url = 'http://davesgalaxy.com/planets/list/all/%s/'
+    xml_obj = get_xml(list_all_url % 1)
+    insert_planets(xml_obj.xpath('/div//tr[@class="fleetrow"]'))
+    
+    page_count = get_page_count(xml_obj)
+    
+    print "found %d pages" % page_count
+    
+    if page_count > 1:
+        for i in range(1, page_count+1):
+            index = i+1
+            url = list_all_url % i
+            xml_obj = get_xml(url)
+            insert_planets(xml_obj.xpath('/div//tr[@class="fleetrow"]'))
+    
+    with transaction() as c:
+        query = c.execute("""select planet_id from planets""")
+        planet_ids = query.fetchall()
+    
+    print "planet ids:",len(planet_ids)
+    
+    planet_ids = (planet_ids[0],)
+    
+    for planet_id_tuple in planet_ids:
+        planet_id = planet_id_tuple[0]
         
+        planet_info(planet_id)
+        planet_manage(planet_id)
+        planet_budget(planet_id)
+        planet_upgrade(planet_id)
+    
+    
+    # exit mf
+    if connection is not None:
+        connection.close()
 
+if __name__ == '__main__':
+    main()
 
-# exit mf
-if connection is not None:
-    connection.close()
 
