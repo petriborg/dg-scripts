@@ -119,9 +119,9 @@ SELECT p.name, p.planet_id
    AND day_id = (SELECT day_id FROM current_day);
 ;
 
-DROP VIEW IF EXISTS current_resources;
-CREATE VIEW current_resources AS
-SELECT p.name, p.planet_id, 
+DROP VIEW IF EXISTS planet_resources;
+CREATE VIEW planet_resources AS
+SELECT p.name, p.planet_id, day_id,
        steel_on_hand as steel,
        unobtanium_on_hand as unobtanium,
        food_on_hand as food,
@@ -131,6 +131,12 @@ SELECT p.name, p.planet_id,
        treasury as quatloos
   FROM planets p JOIN planet_info i
     ON p.planet_id=i.planet_id
+;
+
+DROP VIEW IF EXISTS current_resources;
+CREATE VIEW current_resources AS
+SELECT *
+  FROM planet_resources
  WHERE day_id = (SELECT day_id FROM current_day)
 ;
 
