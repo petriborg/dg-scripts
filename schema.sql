@@ -133,10 +133,31 @@ SELECT p.name, p.planet_id, day_id,
     ON p.planet_id=i.planet_id
 ;
 
+DROP VIEW IF EXISTS planet_prices;
+CREATE VIEW planet_prices AS
+SELECT p.name, p.planet_id, day_id,
+       steel_price as steel,
+       unobtanium_price as unobtanium,
+       food_price as food,
+       antimatter_price as antimatter,
+       krellmetal_price as krellmetal,
+       hydrocarbon_price as hydrocarbon,
+       consumergoods_price as consumergoods
+  FROM planets p JOIN planet_info i
+    ON p.planet_id=i.planet_id
+;
+
 DROP VIEW IF EXISTS current_resources;
 CREATE VIEW current_resources AS
 SELECT *
   FROM planet_resources
+ WHERE day_id = (SELECT day_id FROM current_day)
+;
+
+DROP VIEW IF EXISTS current_prices;
+CREATE VIEW current_prices AS
+SELECT *
+  FROM planet_prices
  WHERE day_id = (SELECT day_id FROM current_day)
 ;
 

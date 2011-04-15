@@ -11,7 +11,12 @@ import sqlite3 as db_api
 import traceback as tb
 import os, sys, re, json, getopt, codecs
 
-
+# fleet list
+# http://davesgalaxy.com/fleets/list/all/1/
+#
+# turn data
+# http://davesgalaxy.com/lastreport/
+#
 # galaxy list
 # http://davesgalaxy.com/planets/list/all/1/
 #
