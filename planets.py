@@ -11,33 +11,23 @@ import sqlite3 as db_api
 import traceback as tb
 import os, sys, re, json, getopt, codecs
 
-# fleet list
-# http://davesgalaxy.com/fleets/list/all/1/
-#
-# turn data
-# http://davesgalaxy.com/lastreport/
-#
-# galaxy list
-# http://davesgalaxy.com/planets/list/all/1/
-#
-# planet info
-# http://davesgalaxy.com/planets/441551/info/
-# http://davesgalaxy.com/planets/262155/manage/
-# http://davesgalaxy.com/planets/262155/budget/
-# http://davesgalaxy.com/planets/262155/upgradelist/
-#
-# data looks like
-# <tr class="\"fleetrow\"" ...>
-# 10x <td>...</td>
-# the 5th td is the planet name
 
+# global configuration variables
 xml_parser = etree.XMLParser(recover=True)
 sessionid = None
 database = None
 connection = None
 todays_day_id = None
-timeout = '-22 hours'
+day_timeout = '-22 hours'
 
+# turn
+turn_url = "http://davesgalaxy.com/lastreport/"
+
+# fleet
+fleet_list_url = "http://davesgalaxy.com/fleets/list/all/%s/"
+
+# planet
+planet_list_url = 'http://davesgalaxy.com/planets/list/all/%s/'
 planet_info_url = 'http://davesgalaxy.com/planets/%s/info/'
 planet_manage_url = 'http://davesgalaxy.com/planets/%s/manage/'
 planet_budget_url = 'http://davesgalaxy.com/planets/%s/budget/'
@@ -63,18 +53,25 @@ def transaction():
 def get_cookie():
     return "sessionid=%s" % sessionid
 
-# wget the page and push to stdout
+#
+# pull the page and pipe to stdout, this is read by sub.Popen call
+#
+
 def wget(*args):
-    "swapable pull method"
+    "swapable pull method using wget"
     return ['wget', '--load-cookies=cookies.txt', '-q', '-O-'] + list(args)
 
 def curl(*args):
-    "swappable pull method"
+    "swappable pull method using curl"
     return ['curl', '--silent', '-b', get_cookie()] + list(args)
 
 def cat(*args):
     "fake swappable pull method"
     return ['cat', 'data/test_planets_list_all_1']
+
+#
+# database and parsing functions
+#
 
 def find_todays_id(new_day=False):
     "Get todays day_id"
@@ -84,7 +81,7 @@ def find_todays_id(new_day=False):
             query = c.execute("""
                 select day_id from days
                 where creation_time > datetime('now', ?)
-                order by creation_time desc limit 1""", (timeout,));
+                order by creation_time desc limit 1""", (day_timeout,));
             data = query.fetchall()
             if len(data) > 0 and not new_day:
                 day_id = data[0][0]
@@ -180,13 +177,9 @@ def insert_planets(planets_elem):
         planet_number = js_text.split("'")[1]
         return planet_number
 
-    def get_planet_name(tr_elem):
-        planet_name = tr_elem.xpath('td[5]')[0].text
-        return planet_name
-
     for planet in planets_elem:
         planet_number = get_planet_number(planet)
-        planet_name = get_planet_name(planet)
+        planet_name = planet.xpath('td[5]')[0].text
         print "%s: %s" % (planet_name, planet_number)
 
         with transaction() as c:
