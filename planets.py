@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# this was built on Ubuntu 10.04 assumptions may have been made
+# this was built on Ubuntu 10.04 - assumptions have been made
 #
 
 from __future__ import with_statement
@@ -110,15 +110,15 @@ def curl_raw_page(url):
 def get_raw_page(url):
     "Check if raw-page is in the DB, else pull from the web"
     with transaction() as c:
-        query = c.execute("""
+        pages_query = c.execute("""
             select page from raw_pages
             where day_id = ?
               and url = ?
             limit 1""", (todays_day_id, url) );
-        data = query.fetchall()
-        if len(data) > 0:
+        pages_data = pages_query.fetchall()
+        if len(pages_data) > 0:
             #print "Fetching from DB", url
-            raw_page = data[0][0]
+            raw_page = pages_data[0][0]
             #print raw_page
             return raw_page
     raw_page = curl_raw_page(url)
@@ -204,11 +204,13 @@ def insert_planet_data(planet_table, planet_data):
 def planet_data_check(planet_table, planet_id):
     "check if we've processed this planet already today"
     with transaction() as c:
-        query = """select planet_id from %s 
-            where planet_id=%s and day_id=%s""" % (
+        info_query = """
+            select planet_id from %s 
+            where planet_id=%s 
+              and day_id=%s""" % (
             planet_table, planet_id, todays_day_id)
-        #print query
-        data = c.execute(query).fetchall()
+        #print info_query
+        data = c.execute(info_query).fetchall()
         return len(data) > 0
  
 
@@ -222,8 +224,14 @@ def planet_info(planet_id):
     # we haven't processed it, so do it already
     result = dict(planet_id=planet_id, day_id=todays_day_id)
 
-    info_xml_obj = get_xml(planet_info_url % planet_id)
-    info_table_elems = info_xml_obj.xpath('//table')
+    root = get_xml(planet_info_url % planet_id)
+
+    society_level = root.xpath('//div[@class="info1"]/div[3]/text()')[0]
+    result['society_level'] = society_level
+    print "society_level:", society_level
+
+    # fetch the repeatable tables
+    info_table_elems = root.xpath('//table')
 
     # the first table
     tr_elems = info_table_elems[0].xpath('tr')
@@ -355,7 +363,12 @@ def main():
             insert_planets(xml_obj.xpath('/div//tr[@class="fleetrow"]'))
     
     with transaction() as c:
-        query = c.execute("""select planet_id from planets""")
+        # find all the planets that we owned for todays_day_id
+        query = c.execute("""
+            select p.planet_id from planets p, days d
+            where date(p.creation_time) <= date(d.creation_time)
+              and d.day_id = ?
+            """, (todays_day_id,))
         planet_ids = query.fetchall()
     
     print "planet ids:",len(planet_ids)
@@ -364,7 +377,7 @@ def main():
     
     for planet_id_tuple in planet_ids:
         planet_id = planet_id_tuple[0]
-        
+
         planet_info(planet_id)
         planet_manage(planet_id)
         planet_budget(planet_id)

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS planet_info (
     planet_id INTEGER,
     day_id INTEGER,
 
+    society_level INTEGER,
     income_tax_rate REAL,
     tariff_rate REAL,
     open_ship_yard BOOLEAN,
@@ -112,7 +113,7 @@ SELECT d.day_id, d.creation_time
 
 DROP VIEW IF EXISTS open_trading_planets;
 CREATE VIEW open_trading_planets AS
-SELECT p.name, p.planet_id
+SELECT p.name, p.planet_id, i.society_level
   FROM planets p JOIN planet_info i
     ON p.planet_id=i.planet_id
  WHERE open_trading='yes'
@@ -174,4 +175,10 @@ SELECT p.name, p.planet_id, b.fleet_upkeep, b.budget_surplus
    AND r.quatloos > 200
 ;
 
+DROP VIEW IF EXISTS new_planets;
+CREATE VIEW new_planets AS
+SELECT p.name, p.planet_id
+  FROM planets p
+ WHERE date(p.creation_time) = 
+       (SELECT date(d.creation_time) FROM current_day d);
 
