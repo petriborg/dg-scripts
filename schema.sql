@@ -177,8 +177,9 @@ SELECT p.name, p.planet_id, b.fleet_upkeep, b.budget_surplus
 
 DROP VIEW IF EXISTS new_planets;
 CREATE VIEW new_planets AS
-SELECT p.name, p.planet_id
-  FROM planets p
+SELECT p.name, p.planet_id, i.society_level
+  FROM planets p JOIN planet_info i
+    ON p.planet_id=i.planet_id
  WHERE date(p.creation_time) = 
        (SELECT date(d.creation_time) FROM current_day d);
 

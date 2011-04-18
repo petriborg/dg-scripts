@@ -138,12 +138,15 @@ def dump_page(page, url=None, e=None):
     fd.write(page)
     fd.close()
 
-def get_xml(url, save_xml=False):
+def get_xml(url, json_key='tab', save_xml=False):
     "get 'url' somehow, then decode the json, and xml into a element tree"
     raw_page = get_raw_page(url)
     json_decoder = json.JSONDecoder()
     json_obj = json_decoder.decode(raw_page)
-    xml_page = json_obj.get('tab')
+    xml_page = json_obj.get(json_key)
+    if xml_page is None:
+        print "Unmatched json key", json_key
+        return None
     xml_page = xml_page.strip()
     try:
         xml_obj = etree.fromstring(xml_page, xml_parser)
@@ -345,23 +348,23 @@ def main():
     print "database:",database
     print "sessionid:",sessionid
     
+    # fetch, or create the day_id
     find_todays_id(new_day=new_day)
     
-    list_all_url = 'http://davesgalaxy.com/planets/list/all/%s/'
-    xml_obj = get_xml(list_all_url % 1)
+    # fetch the planet list
+    xml_obj = get_xml(planet_list_url % 1)
     insert_planets(xml_obj.xpath('/div//tr[@class="fleetrow"]'))
-    
     page_count = get_page_count(xml_obj)
-    
     print "found %d pages" % page_count
-    
+
     if page_count > 1:
         for i in range(1, page_count+1):
             index = i+1
-            url = list_all_url % i
+            url = planet_list_url % i
             xml_obj = get_xml(url)
             insert_planets(xml_obj.xpath('/div//tr[@class="fleetrow"]'))
-    
+
+    # fetch all the planets for day_id
     with transaction() as c:
         # find all the planets that we owned for todays_day_id
         query = c.execute("""
@@ -370,11 +373,11 @@ def main():
               and d.day_id = ?
             """, (todays_day_id,))
         planet_ids = query.fetchall()
-    
-    print "planet ids:",len(planet_ids)
+    print "planet ids:", len(planet_ids)
     
     #planet_ids = (planet_ids[0],)
     
+    # process all the planet info for day_id
     for planet_id_tuple in planet_ids:
         planet_id = planet_id_tuple[0]
 
@@ -382,6 +385,10 @@ def main():
         planet_manage(planet_id)
         planet_budget(planet_id)
         planet_upgrade(planet_id)
+   
+    # fetch the turn report
+    turn_xml = get_xml(turn_url, json_key='pagedata')
+    turn = turn_xml.xpath('/div/pre/text()')[0]
     
     
     # exit mf
